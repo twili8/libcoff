@@ -3,9 +3,6 @@
 //
 
 #include "worker.h"
-//
-// Created by dev on 9/16/26.
-//
 
 #include "worker.h"
 
