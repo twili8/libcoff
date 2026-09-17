@@ -109,7 +109,7 @@ int image_find_sections(const void* image,
     int find_ro) {
     if (!is_image_valid(image)) return 0;
 
-    if (is_machine_64bit(machine)) {
+    if (is_machine_64bit(get_machine_type(image))) {
         return helper_image_find_sections_64(image, find_x, find_w, find_r, find_ro);
     } else {
         return helper_image_find_sections_32(image, find_x, find_w, find_r, find_ro);
