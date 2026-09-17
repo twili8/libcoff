@@ -79,3 +79,46 @@ int is_image_have_entry_point(const void* image) {
         return ((const IMAGE_NT_HEADERS32*)nt)->OptionalHeader.AddressOfEntryPoint != 0;
     }
 }
+
+struct image_section {
+    struct image_section* next;
+    uint32_t virtual_address;
+    uint32_t size;
+};
+
+static int helper_image_find_sections_32(const void* image,
+    int find_x,
+    int find_w,
+    int find_r,
+    int find_ro) {
+    return 0;
+}
+
+static int helper_image_find_sections_64(const void* image,
+    int find_x,
+    int find_w,
+    int find_r,
+    int find_ro) {
+    return 0;
+}
+
+int image_find_sections(const void* image,
+    int find_x,
+    int find_w,
+    int find_r,
+    int find_ro) {
+    if (!is_image_valid(image)) return 0;
+
+    if (is_machine_64bit(machine)) {
+        return helper_image_find_sections_64(image, find_x, find_w, find_r, find_ro);
+    } else {
+        return helper_image_find_sections_32(image, find_x, find_w, find_r, find_ro);
+    }
+
+    return 0;
+}
+
+
+int image_how_many_sections(const void* image) {
+    return 0;
+}
