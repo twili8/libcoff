@@ -64,6 +64,15 @@ typedef enum _IMAGE_FILE_MACHINE {
     IMAGE_FILE_MACHINE_CEE               = 0xC0EE  // CEE (Common Language Runtime)
 } IMAGE_FILE_MACHINE;
 
+const uint16_t MACHINE_64BIT_TYPES[] = {
+    IMAGE_FILE_MACHINE_IA64,      // 0x0200
+    IMAGE_FILE_MACHINE_ALPHA64,   // 0x0284
+    IMAGE_FILE_MACHINE_AMD64,     // 0x8664
+    IMAGE_FILE_MACHINE_ARM64      // 0xAA64
+};
+
+const int MACHINE_64BIT_COUNT = sizeof(MACHINE_64BIT_TYPES) / sizeof(MACHINE_64BIT_TYPES[0]);
+
 // IMAGE_FILE_HEADER.Characteristics field
 #define IMAGE_FILE_RELOCS_STRIPPED           0x0001 // Relocation info stripped from file
 #define IMAGE_FILE_EXECUTABLE_IMAGE          0x0002 // File is executable (no unresolved external references)
