@@ -4,16 +4,7 @@
 
 #include "worker.h"
 
-static int g_is_64_bit = 0;
-
-/* flags breakdown:
- * since all internal functions rely on parsing arch-specific structures we need to know what arch we're working on
- * so call this to tell the library the architecture you are working with
- * it should be safe to call multiple times to edit the arch in use on the fly
- */
-
-int set_libcoff_options(int _is_64_bit) {
-    g_is_64_bit = _is_64_bit;
+int set_libcoff_options() {
     return 0;
 }
 
@@ -42,4 +33,49 @@ static int detect_architecture(void* image) {
     const IMAGE_FILE_HEADER* file_header = (IMAGE_FILE_HEADER*)(pe_sig_ptr + 1);
 
     return is_machine_64bit(file_header->Machine);
+}
+static inline uint16_t get_machine_type(const void* image) {
+    if (!image) return 0;
+
+    const IMAGE_DOS_HEADER* dos = (const IMAGE_DOS_HEADER*)image;
+    if (dos->e_magic != IMAGE_DOS_SIGNATURE) return 0;
+
+    const uint32_t* pe_sig = (const uint32_t*)((const uint8_t*)image + dos->e_lfanew);
+    if (*pe_sig != IMAGE_NT_SIGNATURE) return 0;
+
+    const IMAGE_FILE_HEADER* fh = (const IMAGE_FILE_HEADER*)(pe_sig + 1);
+    return fh->Machine;
+}
+
+static void* get_nt_headers(const void* image) {
+    if (!image) return 0;
+    const IMAGE_DOS_HEADER* dos = (const IMAGE_DOS_HEADER*)image;
+    if (dos->e_magic != IMAGE_DOS_SIGNATURE) return 0;
+    return (void*)((uint8_t*)image + dos->e_lfanew);
+}
+
+int is_image_valid(const void* image) {
+    if (!image) return 0;
+
+    const uint16_t machine = get_machine_type(image);
+    if (machine == 0) return 0;
+
+    void* nt = get_nt_headers(image);
+    if (!nt) return 0;
+
+    return *(const uint32_t*)nt == IMAGE_NT_SIGNATURE;
+}
+
+int is_image_have_entry_point(const void* image) {
+    const uint16_t machine = get_machine_type(image);
+    if (machine == 0) return 0;
+
+    void* nt = get_nt_headers(image);
+    if (!nt) return 0;
+
+    if (is_machine_64bit(machine)) {
+        return ((const IMAGE_NT_HEADERS64*)nt)->OptionalHeader.AddressOfEntryPoint != 0;
+    } else {
+        return ((const IMAGE_NT_HEADERS32*)nt)->OptionalHeader.AddressOfEntryPoint != 0;
+    }
 }
