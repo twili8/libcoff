@@ -186,11 +186,15 @@ typedef struct _IMAGE_DOS_HEADER {
     LONG e_lfanew;     // File address of new exe header (ptr to IMAGE_NT_HEADERS)
 } IMAGE_DOS_HEADER, *PIMAGE_DOS_HEADER;
 
+// MS docs:
+// "Note that the Windows loader limits the number of sections to 96."
 typedef struct _IMAGE_FILE_HEADER {
     WORD  Machine;
     WORD  NumberOfSections;
     DWORD TimeDateStamp;
-    DWORD PointerToSymbolTable;
+    DWORD PointerToSymbolTable; // MS docs:
+                                // This value should be zero for an image because COFF
+                                // debugging information is deprecated.
     DWORD NumberOfSymbols;
     WORD  SizeOfOptionalHeader;
     WORD  Characteristics;
