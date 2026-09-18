@@ -131,7 +131,7 @@ static int helper_image_find_sections_32(const IMAGE_NT_HEADERS32* image,
         if (section_characteristics & IMAGE_SCN_MEM_EXECUTE) section_flags |= find_x;
         if (section_characteristics & IMAGE_SCN_MEM_WRITE) section_flags |= find_w;
         if (section_characteristics & IMAGE_SCN_MEM_READ) section_flags |= find_r;
-        if (section_characteristics & IMAGE_SCN_MEM_READ) section_flags |= find_ro;
+        if (! (section_characteristics & IMAGE_SCN_MEM_WRITE)) section_flags |= find_ro;
         if (section_flags == (find_x | find_w | find_r | find_ro)) {
             matches++;
         }
@@ -184,7 +184,7 @@ static int helper_image_find_sections_64(const IMAGE_NT_HEADERS64* image,
         if (section_characteristics & IMAGE_SCN_MEM_EXECUTE) section_flags |= find_x;
         if (section_characteristics & IMAGE_SCN_MEM_WRITE) section_flags |= find_w;
         if (section_characteristics & IMAGE_SCN_MEM_READ) section_flags |= find_r;
-        if (section_characteristics & IMAGE_SCN_MEM_READ) section_flags |= find_ro;
+        if (! (section_characteristics & IMAGE_SCN_MEM_WRITE)) section_flags |= find_ro;
         if (section_flags == (find_x | find_w | find_r | find_ro)) {
             matches++;
         }
