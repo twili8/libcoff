@@ -38,6 +38,7 @@ static int detect_architecture(void* image) {
 
     return is_machine_64bit(file_header->Machine);
 }
+
 static inline uint16_t get_machine_type(const void* image) {
     if (!image) return 0;
 
@@ -105,7 +106,7 @@ static struct libcoff_image_section build_image_section_struct(const uint32_t va
         sizeof(IMAGE_FILE_HEADER) + \
         IMG->FileHeader.SizeOfOptionalHeader;
 
-static int helper_image_find_sections_32(const IMAGE_NT_HEADERS32* image,
+static struct libcoff_image_section* helper_image_find_sections_32(const IMAGE_NT_HEADERS32* image,
     int find_x,
     int find_w,
     int find_r,
@@ -116,6 +117,9 @@ static int helper_image_find_sections_32(const IMAGE_NT_HEADERS32* image,
     int matches = 0;
     uint32_t section_virtual_address = 0;
     uint32_t section_size = 0;
+
+    struct libcoff_image_section* head = NULL;
+    struct libcoff_image_section* tail = NULL;
 
     while (nb_sections--) {
         const uint32_t section_table_offset = SECTION_TABLE_OFFSET(image);
@@ -137,9 +141,6 @@ static int helper_image_find_sections_32(const IMAGE_NT_HEADERS32* image,
         }
     }
 
-    struct libcoff_image_section* head = NULL;
-    struct libcoff_image_section* current = NULL;
-
     while (matches--) {
         struct libcoff_image_section* section = (struct libcoff_image_section*)malloc(sizeof(struct libcoff_image_section));
         if (!section) {
@@ -150,17 +151,17 @@ static int helper_image_find_sections_32(const IMAGE_NT_HEADERS32* image,
 
         if (head == NULL) {
             head = section;
-            current = section;
+            tail = section;
         } else {
-            current->next = section;
-            current = section;
+            tail->next = section;
+            tail = section;
         }
     }
 
-    return 0;
+    return head;
 }
 
-static int helper_image_find_sections_64(const IMAGE_NT_HEADERS64* image,
+static struct libcoff_image_section* helper_image_find_sections_64(const IMAGE_NT_HEADERS64* image,
     int find_x,
     int find_w,
     int find_r,
@@ -169,6 +170,8 @@ static int helper_image_find_sections_64(const IMAGE_NT_HEADERS64* image,
     int matches = 0;
     uint32_t section_virtual_address = 0;
     uint32_t section_size = 0;
+    struct libcoff_image_section* head = NULL;
+    struct libcoff_image_section* tail = NULL;
 
     while (nb_sections--) {
         const uint32_t section_table_offset = SECTION_TABLE_OFFSET(image);
@@ -190,9 +193,6 @@ static int helper_image_find_sections_64(const IMAGE_NT_HEADERS64* image,
         }
     }
 
-    struct libcoff_image_section* head = NULL;
-    struct libcoff_image_section* current = NULL;
-
     while (matches--) {
         struct libcoff_image_section* section = (struct libcoff_image_section*)malloc(sizeof(struct libcoff_image_section));
         if (!section) {
@@ -203,14 +203,14 @@ static int helper_image_find_sections_64(const IMAGE_NT_HEADERS64* image,
 
         if (head == NULL) {
             head = section;
-            current = section;
+            tail = section;
         } else {
-            current->next = section;
-            current = section;
+            tail->next = section;
+            tail = section;
         }
     }
 
-    return 0;
+    return head;
 }
 
 int image_find_sections(const void* image,
@@ -230,3 +230,9 @@ int image_find_sections(const void* image,
 
     return 0;
 }
+
+struct libcoff_image_section {
+    struct libcoff_image_section* next;
+    uint32_t virtual_address;
+    uint32_t size;
+};
