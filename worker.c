@@ -3,6 +3,10 @@
 //
 
 #include "worker.h"
+#include <stdlib.h>
+#include <stddef.h>
+
+
 
 int set_libcoff_options() {
     return 0;
@@ -80,25 +84,89 @@ int is_image_have_entry_point(const void* image) {
     }
 }
 
-struct image_section {
-    struct image_section* next;
+static int image_how_many_sections(const IMAGE_FILE_HEADER* image) {
+    return ((const IMAGE_NT_HEADERS*)image)->FileHeader.NumberOfSections;
+}
+
+struct libcoff_image_section {
+    struct libcoff_image_section* next;
     uint32_t virtual_address;
     uint32_t size;
 };
 
-static int helper_image_find_sections_32(const void* image,
+static struct libcoff_image_section build_image_section_struct(const uint32_t va, const uint32_t size) {
+    return (struct libcoff_image_section) {
+        .virtual_address = va,
+        .size = size
+    };
+}
+
+#define SECTION_TABLE_OFFSET(IMG) \
+        sizeof(IMAGE_FILE_HEADER) + \
+        IMG->FileHeader.SizeOfOptionalHeader;
+
+static int helper_image_find_sections(const IMAGE_NT_HEADERS32* image,
     int find_x,
     int find_w,
     int find_r,
     int find_ro) {
+
+
+    int nb_sections = image_how_many_sections(&image->FileHeader);
+    int matches = 0;
+    uint32_t section_virtual_address = 0;
+    uint32_t section_size = 0;
+
+    while (nb_sections--) {
+        const uint32_t section_table_offset = SECTION_TABLE_OFFSET(image);
+        const IMAGE_SECTION_HEADER* section =
+            (const IMAGE_SECTION_HEADER*)(image + section_table_offset);
+
+        const char* section_name = (const char*)section->Name;
+        section_virtual_address = section->VirtualAddress;
+        section_size = section->Misc.VirtualSize;
+        uint32_t section_characteristics = section->Characteristics;
+        uint32_t section_flags = 0;
+
+        if (section_characteristics & IMAGE_SCN_MEM_EXECUTE) section_flags |= find_x;
+        if (section_characteristics & IMAGE_SCN_MEM_WRITE) section_flags |= find_w;
+        if (section_characteristics & IMAGE_SCN_MEM_READ) section_flags |= find_r;
+        if (section_characteristics & IMAGE_SCN_MEM_READ) section_flags |= find_ro;
+        if (section_flags == (find_x | find_w | find_r | find_ro)) {
+            matches++;
+        }
+    }
+
+    struct libcoff_image_section* head = NULL;
+    struct libcoff_image_section* current = NULL;
+
+    while (matches--) {
+        struct libcoff_image_section* section = (struct libcoff_image_section*)malloc(sizeof(struct libcoff_image_section));
+        if (!section) {
+            break;
+        }
+        *section = build_image_section_struct(section_virtual_address, section_size);
+        section->next = NULL;
+
+        if (head == NULL) {
+            head = section;
+            current = section;
+        } else {
+            current->next = section;
+            current = section;
+        }
+    }
+
     return 0;
 }
 
-static int helper_image_find_sections_64(const void* image,
+static int helper_image_find_sections_64(const IMAGE_NT_HEADERS64* image,
     int find_x,
     int find_w,
     int find_r,
     int find_ro) {
+    int nb_sections = image_how_many_sections(&image->FileHeader);
+
     return 0;
 }
 
@@ -110,15 +178,12 @@ int image_find_sections(const void* image,
     if (!is_image_valid(image)) return 0;
 
     if (is_machine_64bit(get_machine_type(image))) {
-        return helper_image_find_sections_64(image, find_x, find_w, find_r, find_ro);
+        const IMAGE_NT_HEADERS64* i = image;
+        return helper_image_find_sections_64(i, find_x, find_w, find_r, find_ro);
     } else {
-        return helper_image_find_sections_32(image, find_x, find_w, find_r, find_ro);
+        const IMAGE_NT_HEADERS32* i = image;
+        return helper_image_find_sections_32(i, find_x, find_w, find_r, find_ro);
     }
 
-    return 0;
-}
-
-
-int image_how_many_sections(const void* image) {
     return 0;
 }
