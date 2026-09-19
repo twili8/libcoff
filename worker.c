@@ -7,11 +7,17 @@
 #include <stddef.h>
 #include <string.h>
 
+typedef void (*libcoff_free_memory)(void* ptr);
 
-int set_libcoff_options() {
+static libcoff_free_memory g_libcoff_free_memory = NULL;
 
+int set_libcoff_options(
+    void (*free_mem_callback)(void*)
+    ) {
+    g_libcoff_free_memory = free_mem_callback;
     return 0;
 }
+
 
 static inline int is_machine_64bit(const uint16_t machine_type) {
     for (int i = 0; i < MACHINE_64BIT_COUNT; i++) {
@@ -40,6 +46,23 @@ static void* get_nt_headers(const void* image) {
     const IMAGE_DOS_HEADER* dos = (const IMAGE_DOS_HEADER*)image;
     if (dos->e_magic != IMAGE_DOS_SIGNATURE) return 0;
     return (void*)((uint8_t*)image + dos->e_lfanew);
+}
+
+static const IMAGE_DATA_DIRECTORY* get_image_data_directory(const void* image,
+    const uint32_t directory) {
+    const uint16_t machine = get_machine_type(image);
+    const void* nt = get_nt_headers(image);
+    if (!machine || !nt) return NULL;
+
+    if (is_machine_64bit(machine)) {
+        const IMAGE_NT_HEADERS64* headers = (const IMAGE_NT_HEADERS64*)nt;
+        if (directory >= headers->OptionalHeader.NumberOfRvaAndSizes) return NULL;
+        return &headers->OptionalHeader.DataDirectory[directory];
+    }
+
+    const IMAGE_NT_HEADERS32* headers = (const IMAGE_NT_HEADERS32*)nt;
+    if (directory >= headers->OptionalHeader.NumberOfRvaAndSizes) return NULL;
+    return &headers->OptionalHeader.DataDirectory[directory];
 }
 
 int is_image_valid(const void* image) {
@@ -142,14 +165,19 @@ struct libcoff_image_section* image_find_sections(const void* image,
 }
 
 
-static inline char* copy_symbol_name(const char* name) {
-    const size_t length = strlen(name);
-    char* copy = (char*)malloc(length + 1);
-    if (!copy) return NULL;
+#define DEFINE_NAME_COPY(NAME, STRIP_EXTENSION)                         \
+    static char* NAME(const char* value) {                              \
+        const char* end = (STRIP_EXTENSION) ? strrchr(value, '.') : 0; \
+        const size_t length = end ? (size_t)(end - value) : strlen(value); \
+        char* copy = (char*)malloc(length + 1);                         \
+        if (!copy) return NULL;                                         \
+        memcpy(copy, value, length);                                    \
+        copy[length] = '\0';                                            \
+        return copy;                                                     \
+    }
 
-    memcpy(copy, name, length + 1);
-    return copy;
-}
+DEFINE_NAME_COPY(copy_symbol_name, 0)
+DEFINE_NAME_COPY(copy_library_name, 1)
 
 static struct libcoff_symbol* append_symbol(struct libcoff_symbol** head,
     struct libcoff_symbol** tail,
@@ -178,7 +206,7 @@ static struct libcoff_symbol* append_symbol(struct libcoff_symbol** head,
 static struct libcoff_symbol* helper_list_symbols(
     const void* image,
     const IMAGE_DATA_DIRECTORY* export_directory_entry) {
-    if (export_directory_entry->VirtualAddress == 0 ||
+    if (!export_directory_entry || export_directory_entry->VirtualAddress == 0 ||
         export_directory_entry->Size < sizeof(IMAGE_EXPORT_DIRECTORY)) {
         return NULL;
     }
@@ -209,22 +237,8 @@ static struct libcoff_symbol* helper_list_symbols(
 struct libcoff_symbol* list_symbols(const void* image) {
     if (!is_image_valid(image)) return NULL;
 
-    const uint16_t machine = get_machine_type(image);
-    const IMAGE_DATA_DIRECTORY* export_directory;
-    if (is_machine_64bit(machine)) {
-        const IMAGE_NT_HEADERS64* headers = (const IMAGE_NT_HEADERS64*)get_nt_headers(image);
-        if (headers->OptionalHeader.NumberOfRvaAndSizes <= IMAGE_DIRECTORY_ENTRY_EXPORT) {
-            return NULL;
-        }
-        export_directory = &headers->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT];
-    } else {
-        const IMAGE_NT_HEADERS32* headers = (const IMAGE_NT_HEADERS32*)get_nt_headers(image);
-        if (headers->OptionalHeader.NumberOfRvaAndSizes <= IMAGE_DIRECTORY_ENTRY_EXPORT) {
-            return NULL;
-        }
-        export_directory = &headers->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT];
-    }
-
+    const IMAGE_DATA_DIRECTORY* export_directory =
+        get_image_data_directory(image, IMAGE_DIRECTORY_ENTRY_EXPORT);
     return helper_list_symbols(image, export_directory);
 }
 
@@ -238,3 +252,114 @@ void* get_image_entry_point(void* image) {
     }
 }
 
+char* get_image_architecture(const void* image) {
+    if (!is_image_valid(image)) return NULL;
+
+    const uint16_t machine = get_machine_type(image);
+    if (is_machine_64bit(machine)) {
+        return "x64";
+    } else {
+        return "x86"; // maybe this should return "Unknown"
+    }
+}
+
+static void free_symbol_list(struct libcoff_symbol* symbols) {
+    while (symbols) {
+        struct libcoff_symbol* next = symbols->next;
+        free(symbols->name);
+        free(symbols);
+        symbols = next;
+    }
+}
+
+static void free_imported_library(struct libcoff_imported_library* library) {
+    if (!library) return;
+    free(library->name);
+    free_symbol_list(library->sym);
+    free(library);
+}
+
+static int append_imported_symbol(struct libcoff_imported_library* library,
+    const char* name,
+    uint32_t virtual_address) {
+    struct libcoff_symbol* tail = library->sym;
+    while (tail && tail->next) tail = tail->next;
+
+    if (!append_symbol(&library->sym, &tail, name, virtual_address)) return 0;
+    library->nb_of_functions_imported++;
+    return 1;
+}
+
+struct libcoff_imported_library* libcoff_get_imported_libraries(const void* image) {
+    if (!is_image_valid(image)) return NULL;
+
+    const uint16_t machine = get_machine_type(image);
+    const IMAGE_DATA_DIRECTORY* import_directory =
+        get_image_data_directory(image, IMAGE_DIRECTORY_ENTRY_IMPORT);
+    if (!import_directory) return NULL;
+
+    if (import_directory->VirtualAddress == 0 ||
+        import_directory->Size < sizeof(IMAGE_IMPORT_DESCRIPTOR)) return NULL;
+
+    const uint8_t* base = (const uint8_t*)image;
+    const IMAGE_IMPORT_DESCRIPTOR* descriptor =
+        (const IMAGE_IMPORT_DESCRIPTOR*)(base + import_directory->VirtualAddress);
+    struct libcoff_imported_library* head = NULL;
+    struct libcoff_imported_library* tail = NULL;
+
+    for (; descriptor->DUMMYUNIONNAME.OriginalFirstThunk || descriptor->Name ||
+           descriptor->FirstThunk; descriptor++) {
+        struct libcoff_imported_library* library =
+            (struct libcoff_imported_library*)calloc(1, sizeof(*library));
+        if (!library) break;
+
+        library->name = copy_library_name((const char*)(base + descriptor->Name));
+        if (!library->name) {
+            free_imported_library(library);
+            break;
+        }
+
+        const uint32_t thunk_rva = descriptor->DUMMYUNIONNAME.OriginalFirstThunk
+            ? descriptor->DUMMYUNIONNAME.OriginalFirstThunk : descriptor->FirstThunk;
+        if (is_machine_64bit(machine)) {
+            const uint64_t* thunks = (const uint64_t*)(base + thunk_rva);
+            for (uint32_t index = 0; thunks[index] != 0; index++) {
+                if (thunks[index] & UINT64_C(0x8000000000000000)) continue;
+                const char* function_name = (const char*)(base + (uint32_t)thunks[index] + sizeof(WORD));
+                if (!append_imported_symbol(library, function_name,
+                        descriptor->FirstThunk + index * sizeof(uint64_t))) {
+                    free_imported_library(library);
+                    library = NULL;
+                    break;
+                }
+            }
+        } else {
+            const uint32_t* thunks = (const uint32_t*)(base + thunk_rva);
+            for (uint32_t index = 0; thunks[index] != 0; index++) {
+                if (thunks[index] & 0x80000000U) continue;
+                const char* function_name = (const char*)(base + thunks[index] + sizeof(WORD));
+                if (!append_imported_symbol(library, function_name,
+                        descriptor->FirstThunk + index * sizeof(uint32_t))) {
+                    free_imported_library(library);
+                    library = NULL;
+                    break;
+                }
+            }
+        }
+
+        if (!library) break;
+        if (!head) head = library;
+        else tail->next = library;
+        tail = library;
+    }
+
+    return head;
+}
+
+void free_imported_libraries(struct libcoff_imported_library* libraries) {
+    while (libraries) {
+        struct libcoff_imported_library* next = libraries->next;
+        free_imported_library(libraries);
+        libraries = next;
+    }
+}

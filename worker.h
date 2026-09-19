@@ -452,6 +452,16 @@ struct libcoff_symbol {
 
 struct libcoff_symbol* list_symbols(const void* image);
 
+struct libcoff_imported_library {
+    struct libcoff_imported_library* next;
+    int nb_of_functions_imported;
+    char* name;
+    struct libcoff_symbol* sym;
+};
+
+struct libcoff_imported_library* libcoff_imported_library(const void* image);
+void free_imported_libraries(struct libcoff_imported_library* libraries);
+
 
 // subsystems
 #define IMAGE_SUBSYSTEM_UNKNOWN              0
