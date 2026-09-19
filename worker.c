@@ -227,3 +227,14 @@ struct libcoff_symbol* list_symbols(const void* image) {
 
     return helper_list_symbols(image, export_directory);
 }
+
+void* get_image_entry_point(void* image) {
+    if (is_machine_64bit(get_machine_type(image))) {
+        const IMAGE_NT_HEADERS64* headers = (const IMAGE_NT_HEADERS64*)get_nt_headers(image);
+        return (void*)headers->OptionalHeader.AddressOfEntryPoint;
+    } else {
+        const IMAGE_NT_HEADERS32* headers = (const IMAGE_NT_HEADERS32*)get_nt_headers(image);
+        return (void*)headers->OptionalHeader.AddressOfEntryPoint;
+    }
+}
+
