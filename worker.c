@@ -141,7 +141,7 @@ struct libcoff_image_section* image_find_sections(const void* image,
 }
 
 
-static char* copy_symbol_name(const char* name) {
+static inline char* copy_symbol_name(const char* name) {
     const size_t length = strlen(name);
     char* copy = (char*)malloc(length + 1);
     if (!copy) return NULL;
