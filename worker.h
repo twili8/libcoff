@@ -17,6 +17,10 @@
  */
 #include <stdint.h>
 
+#ifndef __stdcall
+#define __stdcall
+#endif
+
 #define IMAGE_SIZEOF_SHORT_NAME 8
 #define IMAGE_NUMBEROF_DIRECTORY_ENTRIES 16
 
@@ -439,6 +443,14 @@ typedef struct _IMAGE_SECTION_HEADER {
     WORD  NumberOfLinenumbers;           // Number of line number entries
     DWORD Characteristics;               // Section flags
 } IMAGE_SECTION_HEADER, *PIMAGE_SECTION_HEADER;
+
+struct libcoff_symbol {
+    struct libcoff_symbol* next;
+    char* name;
+    uint32_t virtual_address;
+};
+
+struct libcoff_symbol* list_symbols(const void* image);
 
 
 // subsystems
