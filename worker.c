@@ -8,13 +8,17 @@
 #include <string.h>
 
 typedef void (*libcoff_free_memory)(void* ptr);
-
 static libcoff_free_memory g_libcoff_free_memory = NULL;
 
+typedef void* (*libcoff_alloc_memory)(uint64_t amt);
+static libcoff_alloc_memory g_libcoff_alloc_memory;
+
 int set_libcoff_options(
-    void (*free_mem_callback)(void*)
+    void (*free_mem_callback)(void*),
+    void* (*alloc_mem_callback)(uint64_t amt)
     ) {
     g_libcoff_free_memory = free_mem_callback;
+    g_libcoff_alloc_memory = alloc_mem_callback;
     return 0;
 }
 
@@ -133,7 +137,7 @@ static struct libcoff_image_section* helper_image_find_sections(
         if (section_flags != required_flags) continue;
 
         struct libcoff_image_section* result =
-            (struct libcoff_image_section*)malloc(sizeof(*result));
+            (struct libcoff_image_section*)g_libcoff_alloc_memory(sizeof(*result));
         if (!result) break;
 
         *result = build_image_section_struct(section->VirtualAddress, section->Misc.VirtualSize);
@@ -169,7 +173,7 @@ struct libcoff_image_section* image_find_sections(const void* image,
     static char* NAME(const char* value) {                              \
         const char* end = (STRIP_EXTENSION) ? strrchr(value, '.') : 0; \
         const size_t length = end ? (size_t)(end - value) : strlen(value); \
-        char* copy = (char*)malloc(length + 1);                         \
+        char* copy = (char*)g_libcoff_alloc_memory(length + 1);         \
         if (!copy) return NULL;                                         \
         memcpy(copy, value, length);                                    \
         copy[length] = '\0';                                            \
@@ -183,7 +187,7 @@ static struct libcoff_symbol* append_symbol(struct libcoff_symbol** head,
     struct libcoff_symbol** tail,
     const char* name,
     uint32_t virtual_address) {
-    struct libcoff_symbol* symbol = (struct libcoff_symbol*)malloc(sizeof(*symbol));
+    struct libcoff_symbol* symbol = (struct libcoff_symbol*)g_libcoff_alloc_memory(sizeof(*symbol));
     if (!symbol) return NULL;
 
     symbol->name = copy_symbol_name(name);
@@ -266,17 +270,17 @@ char* get_image_architecture(const void* image) {
 static void free_symbol_list(struct libcoff_symbol* symbols) {
     while (symbols) {
         struct libcoff_symbol* next = symbols->next;
-        free(symbols->name);
-        free(symbols);
+        g_libcoff_free_memory(symbols->name);
+        g_libcoff_free_memory(symbols);
         symbols = next;
     }
 }
 
 static void free_imported_library(struct libcoff_imported_library* library) {
     if (!library) return;
-    free(library->name);
+    g_libcoff_free_memory(library->name);
     free_symbol_list(library->sym);
-    free(library);
+    g_libcoff_free_memory(library);
 }
 
 static int append_imported_symbol(struct libcoff_imported_library* library,
