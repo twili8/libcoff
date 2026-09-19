@@ -139,3 +139,90 @@ struct libcoff_image_section* image_find_sections(const void* image,
     return helper_image_find_sections(file_header, section_table,
         find_x, find_w, find_r, find_ro);
 }
+
+
+static char* copy_symbol_name(const char* name) {
+    const size_t length = strlen(name);
+    char* copy = (char*)malloc(length + 1);
+    if (!copy) return NULL;
+
+    memcpy(copy, name, length + 1);
+    return copy;
+}
+
+static struct libcoff_symbol* append_symbol(struct libcoff_symbol** head,
+    struct libcoff_symbol** tail,
+    const char* name,
+    uint32_t virtual_address) {
+    struct libcoff_symbol* symbol = (struct libcoff_symbol*)malloc(sizeof(*symbol));
+    if (!symbol) return NULL;
+
+    symbol->name = copy_symbol_name(name);
+    if (!symbol->name) {
+        free(symbol);
+        return NULL;
+    }
+    symbol->virtual_address = virtual_address;
+    symbol->next = NULL;
+
+    if (*head == NULL) {
+        *head = symbol;
+    } else {
+        (*tail)->next = symbol;
+    }
+    *tail = symbol;
+    return symbol;
+}
+
+static struct libcoff_symbol* helper_list_symbols(
+    const void* image,
+    const IMAGE_DATA_DIRECTORY* export_directory_entry) {
+    if (export_directory_entry->VirtualAddress == 0 ||
+        export_directory_entry->Size < sizeof(IMAGE_EXPORT_DIRECTORY)) {
+        return NULL;
+    }
+
+    const uint8_t* base = (const uint8_t*)image;
+    const IMAGE_EXPORT_DIRECTORY* exports =
+        (const IMAGE_EXPORT_DIRECTORY*)(base + export_directory_entry->VirtualAddress);
+    const uint32_t* names = (const uint32_t*)(base + exports->AddressOfNames);
+    const uint16_t* ordinals = (const uint16_t*)(base + exports->AddressOfNameOrdinals);
+    const uint32_t* functions = (const uint32_t*)(base + exports->AddressOfFunctions);
+
+    struct libcoff_symbol* head = NULL;
+    struct libcoff_symbol* tail = NULL;
+    for (uint32_t i = 0; i < exports->NumberOfNames; i++) {
+        if (ordinals[i] >= exports->NumberOfFunctions) {
+            continue;
+        }
+
+        const char* name = (const char*)(base + names[i]);
+        if (!append_symbol(&head, &tail, name, functions[ordinals[i]])) {
+            break;
+        }
+    }
+
+    return head;
+}
+
+struct libcoff_symbol* list_symbols(const void* image) {
+    if (!is_image_valid(image)) return NULL;
+
+    const uint16_t machine = get_machine_type(image);
+    const IMAGE_DATA_DIRECTORY* export_directory;
+    if (is_machine_64bit(machine)) {
+        const IMAGE_NT_HEADERS64* headers = (const IMAGE_NT_HEADERS64*)get_nt_headers(image);
+        if (headers->OptionalHeader.NumberOfRvaAndSizes <= IMAGE_DIRECTORY_ENTRY_EXPORT) {
+            return NULL;
+        }
+        export_directory = &headers->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT];
+    } else {
+        const IMAGE_NT_HEADERS32* headers = (const IMAGE_NT_HEADERS32*)get_nt_headers(image);
+        if (headers->OptionalHeader.NumberOfRvaAndSizes <= IMAGE_DIRECTORY_ENTRY_EXPORT) {
+            return NULL;
+        }
+        export_directory = &headers->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT];
+    }
+
+    return helper_list_symbols(image, export_directory);
+}
