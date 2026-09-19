@@ -93,6 +93,7 @@ static struct libcoff_image_section* helper_image_find_sections(
     int find_r,
     int find_ro) {
     int nb_sections = image_how_many_sections(file_header);
+    const uint32_t required_flags = (uint32_t)(find_x | find_w | find_r | find_ro);
     struct libcoff_image_section* head = NULL;
     struct libcoff_image_section* tail = NULL;
 
@@ -106,7 +107,7 @@ static struct libcoff_image_section* helper_image_find_sections(
         if (section_characteristics & IMAGE_SCN_MEM_WRITE) section_flags |= find_w;
         if (section_characteristics & IMAGE_SCN_MEM_READ) section_flags |= find_r;
         if (!(section_characteristics & IMAGE_SCN_MEM_WRITE)) section_flags |= find_ro;
-        if (section_flags != (find_x | find_w | find_r | find_ro)) continue;
+        if (section_flags != required_flags) continue;
 
         struct libcoff_image_section* result =
             (struct libcoff_image_section*)malloc(sizeof(*result));
