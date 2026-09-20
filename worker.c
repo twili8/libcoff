@@ -13,6 +13,11 @@ static libcoff_free_memory g_libcoff_free_memory = NULL;
 typedef void* (*libcoff_alloc_memory)(uint64_t amt);
 static libcoff_alloc_memory g_libcoff_alloc_memory;
 
+/*
+ * g_libcoff_alloc_memory MUST return zero-initialised memory regions
+ * Otherwise it's UB
+ */
+
 int set_libcoff_options(
     void (*free_mem_callback)(void*),
     void* (*alloc_mem_callback)(uint64_t amt)
@@ -192,7 +197,7 @@ static struct libcoff_symbol* append_symbol(struct libcoff_symbol** head,
 
     symbol->name = copy_symbol_name(name);
     if (!symbol->name) {
-        free(symbol);
+        g_libcoff_free_memory(symbol);
         return NULL;
     }
     symbol->virtual_address = virtual_address;
@@ -314,7 +319,7 @@ struct libcoff_imported_library* libcoff_get_imported_libraries(const void* imag
     for (; descriptor->DUMMYUNIONNAME.OriginalFirstThunk || descriptor->Name ||
            descriptor->FirstThunk; descriptor++) {
         struct libcoff_imported_library* library =
-            (struct libcoff_imported_library*)calloc(1, sizeof(*library));
+            (struct libcoff_imported_library*)g_libcoff_alloc_memory(sizeof(*library));
         if (!library) break;
 
         library->name = copy_library_name((const char*)(base + descriptor->Name));
