@@ -333,7 +333,7 @@ struct libcoff_imported_library* libcoff_get_imported_libraries(const void* imag
         if (is_machine_64bit(machine)) {
             const uint64_t* thunks = (const uint64_t*)(base + thunk_rva);
             for (uint32_t index = 0; thunks[index] != 0; index++) {
-                if (thunks[index] & UINT64_C(0x8000000000000000)) continue;
+                if (thunks[index] & IMAGE_SCN_MEM_WRITE) continue;
                 const char* function_name = (const char*)(base + (uint32_t)thunks[index] + sizeof(WORD));
                 if (!append_imported_symbol(library, function_name,
                         descriptor->FirstThunk + index * sizeof(uint64_t))) {
@@ -342,10 +342,11 @@ struct libcoff_imported_library* libcoff_get_imported_libraries(const void* imag
                     break;
                 }
             }
-        } else {
+        }
+        else {  // 32-bit branch
             const uint32_t* thunks = (const uint32_t*)(base + thunk_rva);
             for (uint32_t index = 0; thunks[index] != 0; index++) {
-                if (thunks[index] & 0x80000000U) continue;
+                if (thunks[index] & IMAGE_SCN_MEM_WRITE) continue;
                 const char* function_name = (const char*)(base + thunks[index] + sizeof(WORD));
                 if (!append_imported_symbol(library, function_name,
                         descriptor->FirstThunk + index * sizeof(uint32_t))) {
@@ -355,7 +356,6 @@ struct libcoff_imported_library* libcoff_get_imported_libraries(const void* imag
                 }
             }
         }
-
         if (!library) break;
         if (!head) head = library;
         else tail->next = library;
